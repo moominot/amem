@@ -17,7 +17,7 @@ export interface Chapter {
   id: string;
   title: string;
   documents: DriveDocument[];
-  sheetTabName?: string; // Nom de la pestanya vinculada al full de càlcul
+  sheetTabName?: string;
 }
 
 export interface Placeholder {
@@ -34,7 +34,8 @@ export interface Project {
   placeholders: Placeholder[];
   isTemplate: boolean;
   createdAt: string;
-  sheetId?: string; // ID del full de càlcul específic del projecte
+  sheetId?: string;
+  folderId?: string; // ID de la carpeta de Drive del projecte
 }
 
 export interface AppSettings {

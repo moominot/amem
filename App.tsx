@@ -6,7 +6,7 @@ import ProjectEditor from './components/ProjectEditor';
 import PlaceholderSettings from './components/PlaceholderSettings';
 import TemplateManager from './components/TemplateManager';
 import ExportView from './components/ExportView';
-import { fetchMasterProjects, createProjectSheet } from './services/googleSheets';
+import { fetchMasterProjects, createProjectFromTemplate } from './services/googleSheets';
 
 const CLIENT_ID = "416985197258-3a7kmp78pv3mqs7v02k81kl6ce0e1bh9.apps.googleusercontent.com";
 
@@ -30,7 +30,7 @@ const App: React.FC = () => {
     try {
       const client = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
+        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file',
         callback: (response: any) => {
           if (response.access_token) {
             setAccessToken(response.access_token);
@@ -56,31 +56,22 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreateProject = async (name: string) => {
+  const handleCreateProject = async (name: string, template?: Project) => {
     if (!accessToken) return handleLogin();
     if (!masterSheetId) {
-       alert("Primer configura un ID de Full Mestre a la configuració.");
+       alert("Primer configura un ID de Full Mestre.");
        return;
     }
     
     setIsLoading(true);
     try {
-      const newProjData = await createProjectSheet(accessToken, masterSheetId, name);
-      const newProject: Project = {
-        ...newProjData,
-        description: '',
-        chapters: [],
-        placeholders: [],
-      };
+      const newProject = await createProjectFromTemplate(accessToken, masterSheetId, name, template);
       
-      // Actualitzem l'estat local i naveguem
       setProjects(prev => [...prev, newProject]);
       setActiveProjectId(newProject.id);
       setView('PROJECT_EDITOR');
-      
-      // Forçar recàrrega de la llista mestra per seguretat
-      await loadProjectsFromSheets(accessToken, masterSheetId);
     } catch (e: any) {
+      console.error(e);
       alert("Error creant el projecte: " + (e.message || e));
     } finally {
       setIsLoading(false);
@@ -135,9 +126,10 @@ const App: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto p-8 relative">
         {isLoading && (
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-xs font-black text-emerald-900 uppercase tracking-widest animate-pulse">Sincronitzant...</p>
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-10">
+            <div className="w-16 h-16 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+            <h2 className="text-xl font-black text-emerald-900 uppercase mb-2">Organitzant Drive</h2>
+            <p className="text-sm text-emerald-600/70 max-w-xs mx-auto">Estem creant la carpeta del projecte i clonant els documents de la plantilla. Això pot trigar uns segons...</p>
           </div>
         )}
 
@@ -145,7 +137,7 @@ const App: React.FC = () => {
           <Dashboard 
             projects={projects.filter(p => !p.isTemplate)} 
             onSelect={(id) => { setActiveProjectId(id); setView('PROJECT_EDITOR'); }}
-            onCreate={handleCreateProject}
+            onCreate={(name) => handleCreateProject(name)}
             onDelete={(id) => setProjects(prev => prev.filter(p => p.id !== id))}
             masterId={masterSheetId}
             onSetMasterId={handleSetMasterId}
@@ -177,7 +169,10 @@ const App: React.FC = () => {
             onDelete={() => {}}
             onUse={(id) => {
               const name = window.prompt('Nom del nou projecte:');
-              if (name) handleCreateProject(name);
+              if (name) {
+                const template = projects.find(p => p.id === id);
+                handleCreateProject(name, template);
+              }
             }}
           />
         )}
