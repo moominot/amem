@@ -73,13 +73,13 @@ const App: React.FC = () => {
         placeholders: [],
       };
       
-      // Actualitzem l'estat immediatament per evitar esperar a la recàrrega de l'API
+      // Actualitzem l'estat local i naveguem
       setProjects(prev => [...prev, newProject]);
       setActiveProjectId(newProject.id);
       setView('PROJECT_EDITOR');
       
-      // I en segon pla recarreguem per assegurar coherència
-      loadProjectsFromSheets(accessToken, masterSheetId);
+      // Forçar recàrrega de la llista mestra per seguretat
+      await loadProjectsFromSheets(accessToken, masterSheetId);
     } catch (e: any) {
       alert("Error creant el projecte: " + (e.message || e));
     } finally {
@@ -88,7 +88,7 @@ const App: React.FC = () => {
   };
 
   const updateActiveProject = (updatedProject: Project) => {
-    setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
+    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
   };
 
   const handleSetMasterId = (id: string) => {

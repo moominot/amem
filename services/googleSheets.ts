@@ -13,7 +13,6 @@ export const fetchMasterProjects = async (token: string, masterId: string): Prom
     
     if (!response.ok) {
       if (response.status === 404) {
-        console.warn("No s'ha trobat la pestanya 'PROJECTES'. Intentant crear-la...");
         await setupMasterSheet(token, masterId);
         return [];
       }
@@ -40,44 +39,77 @@ export const fetchMasterProjects = async (token: string, masterId: string): Prom
 };
 
 /**
- * Configura l'estructura inicial del Full Mestre si és nou
+ * Llegeix TOTA la informació d'un projecte des del seu Full de Càlcul (BIDIRECCIONALITAT)
  */
+export const fetchProjectDetailsFromSheet = async (token: string, sheetId: string): Promise<any> => {
+  try {
+    const response = await fetch(`${BASE_URL}/${sheetId}/values:batchGet?ranges=CONFIG!A2:C&ranges=ESTRUCTURA!A2:C`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    const data = await response.json();
+    const configRows = data.valueRanges[0].values || [];
+    const estructuraRows = data.valueRanges[1].values || [];
+
+    const placeholders = configRows.map((r: any) => ({
+      key: r[0],
+      value: r[1] || '',
+      description: r[2] || ''
+    }));
+
+    // Carregar capítols i els seus documents (cada capítol és una pestanya)
+    const chapters = [];
+    for (const row of estructuraRows) {
+      const title = row[0];
+      const tabName = row[1];
+      
+      // Intentar llegir els documents d'aquella pestanya
+      const docResponse = await fetch(`${BASE_URL}/${sheetId}/values/${tabName}!A2:B`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const docData = await docResponse.json();
+      const docRows = docData.values || [];
+
+      chapters.push({
+        id: `c_${Math.random().toString(36).substr(2, 9)}`,
+        title,
+        sheetTabName: tabName,
+        documents: docRows.map((dr: any, idx: number) => ({
+          id: `d_${idx}`,
+          title: dr[0],
+          url: dr[1],
+          type: dr[1]?.includes('document') ? 'DOC' : 'SHEET'
+        }))
+      });
+    }
+
+    return { placeholders, chapters };
+  } catch (e) {
+    console.warn("No s'han pogut carregar detalls del full (potser és nou):", e);
+    return null;
+  }
+};
+
 export const setupMasterSheet = async (token: string, masterId: string) => {
   await fetch(`${BASE_URL}/${masterId}:batchUpdate`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      requests: [
-        { addSheet: { properties: { title: "PROJECTES" } } }
-      ]
+      requests: [{ addSheet: { properties: { title: "PROJECTES" } } }]
     })
   });
   
   await fetch(`${BASE_URL}/${masterId}/values/PROJECTES!A1:E1?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      values: [["ID", "NOM", "SHEET_ID", "CREAT_EL", "ES_PLANTILLA"]]
-    })
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [["ID", "NOM", "SHEET_ID", "CREAT_EL", "ES_PLANTILLA"]] })
   });
 };
 
-/**
- * Crea un nou full de càlcul per a un projecte i el registra
- */
 export const createProjectSheet = async (token: string, masterId: string, projectName: string) => {
   const response = await fetch(BASE_URL, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       properties: { title: `ARCHI - ${projectName}` },
       sheets: [
@@ -98,31 +130,27 @@ export const createProjectSheet = async (token: string, masterId: string, projec
     isTemplate: false
   };
 
-  // Registrar el projecte al Master
-  if (masterId) {
-    await registerProjectInMaster(token, masterId, newProject);
-  }
-
+  await registerProjectInMaster(token, masterId, newProject);
   return newProject;
 };
 
 const registerProjectInMaster = async (token: string, masterId: string, project: any) => {
+  // Primer comprovem si ja existeix (per no duplicar en re-creacions)
+  const current = await fetchMasterProjects(token, masterId);
+  if (current.find(p => p.sheetId === project.sheetId)) return;
+
   await fetch(`${BASE_URL}/${masterId}/values/PROJECTES!A:E:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       values: [[project.id, project.name, project.sheetId, project.createdAt, project.isTemplate]]
     })
   });
 };
 
-/**
- * Sincronitza dades i CREA PESTANYES
- */
 export const syncProjectData = async (token: string, project: any) => {
+  if (!project.sheetId) return;
+
   const metaResponse = await fetch(`${BASE_URL}/${project.sheetId}?fields=sheets.properties`, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -140,10 +168,7 @@ export const syncProjectData = async (token: string, project: any) => {
   if (requests.length > 0) {
     await fetch(`${BASE_URL}/${project.sheetId}:batchUpdate`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests })
     });
   }
@@ -164,18 +189,12 @@ export const syncProjectData = async (token: string, project: any) => {
     });
   });
 
-  const response = await fetch(`${BASE_URL}/${project.sheetId}/values:batchUpdate`, {
+  await fetch(`${BASE_URL}/${project.sheetId}/values:batchUpdate`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       valueInputOption: "USER_ENTERED",
       data: dataUpdates
     })
   });
-
-  if (!response.ok) throw new Error("Error sincronitzant dades de les pestanyes");
-  return await response.json();
 };
