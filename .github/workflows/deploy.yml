@@ -30,11 +30,10 @@ jobs:
       - name: Copy index.html to 404.html
         run: cp -a dist/index.html dist/404.html || true
 
-      - name: Upload artifacts for GitHub Pages
-        uses: actions/upload-pages-artifact@v1
-        with:
-          path: ./dist
-
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
 
