@@ -1,0 +1,5 @@
+{
+  "name": "Archimemory - Gestor de Memòries d'Arquitectura",
+  "description": "Una aplicació professional per a arquitectes per gestionar, estructurar i automatitzar memòries de projecte utilitzant Google Drive com a base de dades documental.",
+  "requestFramePermissions": []
+}
